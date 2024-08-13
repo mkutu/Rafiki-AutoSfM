@@ -114,12 +114,12 @@ def main(cfg: DictConfig) -> None:
         # Elective processes
 
         # Build depth map if configured
-        if cfg.asfm.build_depth and cfg["asfm"]["depth_map"]["enabled"]:
+        if cfg.asfm.build_depth:
             log.info("Building depth maps")
             pipeline.build_depth_map()
 
         # Build dense point cloud if configured
-        if cfg.asfm.build_dense and cfg["asfm"]["dense_cloud"]["enabled"]:
+        if cfg.asfm.build_point_cloud:
             log.info("Building dense point cloud")
             pipeline.build_dense_cloud()
 
@@ -129,17 +129,17 @@ def main(cfg: DictConfig) -> None:
             pipeline.build_model()
 
         # Build Digital Elevation Model (DEM) if configured
-        if cfg.asfm.build_dem and cfg["asfm"]["dem"]["enabled"]:
+        if cfg.asfm.build_dem:
             log.info("Building DEM")
             pipeline.build_dem()
 
         # Build orthomosaic if configured
-        if cfg.asfm.build_ortho and cfg["asfm"]["orthomosaic"]["enabled"]:
+        if cfg.asfm.build_ortho:
             log.info("Building orthomosaic")
-            pipeline.build_ortomosaic()
+            pipeline.build_orthomosaic()
 
         # Export Field of View (FOV) data if configured
-        if cfg.asfm.export_fov and cfg["asfm"]["export_fov"]:
+        if cfg.asfm.export_fov:
             log.info("Exporting camera FOV information")
             pipeline.camera_fov()
 

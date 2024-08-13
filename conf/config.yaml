@@ -6,8 +6,10 @@ defaults:
   - asfm: default
 
 
-project_name: "your_unique_project_name"
+project_name: "rafiki_test"
 
 metashape_key: "your_metashape_key_path"
 
 task: "autosfm_pipeline"
+
+cpu_denominator: 3

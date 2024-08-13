@@ -69,11 +69,11 @@ class SfM:
 
         if self.project_path.exists():
             log.info(f"Metashape project already exists for {project_name}. Opening project file.")
-            doc.open(self.project_path, read_only=False, ignore_lock=True)
+            doc.open(str(self.project_path), read_only=False, ignore_lock=True)
         else:
             log.info(f"Creating new Metashape project for {project_name}")
             doc.addChunk()
-            doc.save(self.project_path)
+            doc.save(str(self.project_path))
 
         return doc
 
@@ -89,7 +89,8 @@ class SfM:
         Adds photos from a directory to the project.
         """
         file_extensions = ['jpg', 'JPG', 'png', 'PNG', 'bmp', 'BMP']
-        photos = glob_multiple_extensions(self.cfg['asfm']['down_photos'], file_extensions)
+        photos = [str(x) for x in glob_multiple_extensions(self.cfg['paths']['down_photos'], file_extensions)]
+        print(photos)
 
         if self.doc.chunk is None:
             self.doc.addChunk()

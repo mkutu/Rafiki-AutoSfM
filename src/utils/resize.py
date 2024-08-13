@@ -135,7 +135,7 @@ def resize_photo_diretory(cfg) -> None:
     ]
 
     # Determine the number of processes for parallel processing
-    num_processes = int(len(os.sched_getaffinity(0)) / cfg.general.cpu_denominator)
+    num_processes = int(len(os.sched_getaffinity(0)) / cfg.cpu_denominator)
 
     try:
         with Pool(num_processes) as pool:

@@ -1,6 +1,4 @@
 from pathlib import Path
-from typing import Dict
-import yaml
 from omegaconf import DictConfig
 import logging
 
@@ -41,14 +39,14 @@ def create_config(cfg: DictConfig) -> DictConfig:
         DictConfig: Updated configuration dictionary.
     """
     # Load Metashape key from YAML file
-    cfg.metashape_key = yaml.safe_load(cfg.pipeline_keys)
+    # cfg.metashape_key = yaml.safe_load(cfg.pipeline_keys)
     
     # Create necessary directories
     make_autosfm_dirs(cfg)
     
     return cfg
 
-def autosfm_present(cfg: Dict) -> bool:
+def autosfm_present(cfg: DictConfig) -> bool:
     """
     Checks if the expected outputs of the SfM processing pipeline are present.
 
@@ -75,16 +73,13 @@ def autosfm_present(cfg: Dict) -> bool:
     if cfg["asfm"]["use_masking"]:
         expected_outputs.append(Path(cfg["paths"]["down_masks"]))
 
-    # Check presence of all expected outputs
-    all_present = True
-    for path in expected_outputs:
-        if not path.exists():
-            log.warning(f"Expected output not found: {path}")
-            all_present = False
+    # Use list comprehension to find missing paths
+    missing_outputs = [str(path) for path in expected_outputs if not path.exists()]
 
-    if all_present:
-        log.info("All expected outputs are present.")
-    else:
-        log.warning("Some expected outputs are missing.")
+    # Log and return based on missing outputs
+    if missing_outputs:
+        log.warning("Some expected outputs are missing: " + ", ".join(missing_outputs))
+        return False
 
-    return all_present
+    log.info("All expected outputs are present.")
+    return True

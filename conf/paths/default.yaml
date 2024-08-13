@@ -33,11 +33,11 @@ fov_ref: ${paths.refs}/fov.csv
 
 # Orthomosaic output
 orthodir: ${paths.project_asfm}/ortho
-ortho_path: ${paths.project_asfm}/orthomosaic.tif
+ortho_path: ${paths.orthodir}/orthomosaic.tif
 
 # DEM output
 demdir: ${paths.project_asfm}/dem
-dem_path: ${paths.project_asfm}/dem.tif
+dem_path: ${paths.demdir}/dem.tif
 
 # path to output directory, created dynamically by hydra
 # path generation pattern is specified in `configs/hydra/default.yaml`
