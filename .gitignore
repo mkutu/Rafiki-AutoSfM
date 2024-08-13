@@ -9,6 +9,8 @@ __pycache__/
 # Python wheel files
 *.whl
 
+logs
+
 # Distribution / packaging
 .Python
 build/

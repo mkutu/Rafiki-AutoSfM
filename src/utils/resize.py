@@ -4,55 +4,54 @@ import os
 from math import ceil
 from multiprocessing import Pool
 from pathlib import Path
+from typing import List, Union
+
 import piexif
-
-import cv2
-import numpy as np
 from PIL import Image, ImageFile
-from skimage.color import rgb2hsv
-from skimage.morphology import binary_closing, square
 
+# Allow loading of truncated images
 ImageFile.LOAD_TRUNCATED_IMAGES = True
 
+# Set up the logger
 log = logging.getLogger(__name__)
 
-
-def remove_missing_data(cfg):
-    """Removes missing downscaled images are masks.
+def remove_missing_data(cfg) -> None:
+    """
+    Removes missing downscaled images or masks that do not have a corresponding file.
 
     Args:
-        cfg (DictOmega): Hydra object
+        cfg (DictOmega): Hydra configuration object.
     """
-
     imgs = glob.glob(os.path.join(cfg.asfm.down_photos, "*.jpg"))
     masks = glob.glob(os.path.join(cfg.asfm.down_masks, "*.png"))
 
     imgs = [Path(img).stem for img in imgs]
     masks = [Path(mask).stem.replace("_mask", "") for mask in masks]
 
-    # find the missing and additional elements in masks
+    # Find the missing and additional elements in masks
     miss = list(set(imgs).difference(masks))
     add = list(set(masks).difference(imgs))
 
     if (len(miss) == 0) and (len(add) == 0):
-        None
+        return
     elif len(miss) > len(add):
         # More photos than masks. Remove extra photos
-        log.warning(
-            f"More photos than masks. Removing {len(miss)} extra down_scaled photos"
-        )
+        log.warning(f"More photos than masks. Removing {len(miss)} extra downscaled photos")
         for img in miss:
             Path(cfg.asfm.down_photos, img + ".jpg").unlink()
     elif len(add) > len(miss):
         # More masks than photos. Remove extra masks
-        log.warning(
-            f"More masks than photos. Removing {len(add)} extra down_scaled masks"
-        )
+        log.warning(f"More masks than photos. Removing {len(add)} extra downscaled masks")
         for mask in add:
             Path(cfg.asfm.down_masks, mask + "_mask.png").unlink()
 
+def resize_and_save(data: dict) -> None:
+    """
+    Resizes and saves an image or mask according to the given scale.
 
-def resize_and_save(data):
+    Args:
+        data (dict): Dictionary containing image source, destination, scale, and mask flag.
+    """
     image_src = data["image_src"]
     image_dst = data["image_dst"]
     scale = data["scale"]
@@ -65,11 +64,13 @@ def resize_and_save(data):
         width, height = image.size
         scaled_width, scaled_height = int(ceil(width * scale)), int(ceil(height * scale))
         kwargs = {}
+
         if masks:
+            # Save mask without additional processing
+            resized_image = image.resize((scaled_width, scaled_height))
             resized_image.save(image_dst, quality=95, **kwargs)
-            resized_image.save(image_dst, **kwargs)
-        
         else:
+            # Attempt to preserve EXIF data during resizing
             try:
                 exif_data = piexif.load(image.info["exif"])
                 exif_bytes = piexif.dump(exif_data)
@@ -82,33 +83,63 @@ def resize_and_save(data):
 
     except (IOError, SyntaxError) as e:
         log.error(f"Bad file: {image_src}. Error: {e}")
+
+def glob_multiple_extensions(directory: Union[str, Path], extensions: List[str]) -> List[Path]:
+    """
+    Glob files with multiple extensions using pathlib.
+
+    Args:
+        directory (Union[str, Path]): Path to the directory to search in.
+        extensions (List[str]): List of file extensions to search for.
+
+    Returns:
+        List[Path]: List of Paths matching the given extensions.
+    """
+    if isinstance(directory, str):
+        directory = Path(directory)
+
+    # Ensure extensions are formatted correctly
+    extensions = [ext if ext.startswith('.') else f'.{ext}' for ext in extensions]
+
+    # Gather all files matching the extensions
+    files = []
+    for ext in extensions:
+        files.extend(directory.glob(f'*{ext}'))
     
+    return files
 
-def resize_photo_diretory(cfg):
-    base_path = cfg["batchdata"]["images"]
-    save_dir = cfg["asfm"]["down_photos"]
+def resize_photo_diretory(cfg) -> None:
+    """
+    Resizes photos in a directory according to the configuration settings.
 
-    files = glob.glob(os.path.join(base_path, "*.jpg"))
+    Args:
+        cfg (DictOmega): Hydra configuration object.
+    """
+    base_path = cfg["paths"]["input_images"]
+    save_dir = cfg["paths"]["down_photos"]
+
+    file_extensions = ['jpg', 'JPG', 'png', 'PNG', 'bmp', 'BMP']
+    files = glob_multiple_extensions(base_path, file_extensions)
+
     num_files = len(files)
     log.info(f"Processing {num_files} files.")
 
     data = [
         {
             "image_src": src,
-            "image_dst": os.path.join(save_dir, os.path.basename(src)),
+            "image_dst": Path(save_dir, src.name),
             "scale": cfg["asfm"]["downscale"]["factor"],
             "masks": False,
         }
         for src in files
     ]
 
-    # Adjust the number of processes as needed
+    # Determine the number of processes for parallel processing
     num_processes = int(len(os.sched_getaffinity(0)) / cfg.general.cpu_denominator)
 
     try:
         with Pool(num_processes) as pool:
             for i, _ in enumerate(pool.imap_unordered(resize_and_save, data), 1):
-                # pool.imap_unordered(resize_and_save, data)
                 print(f"Progress: {i}/{num_files} images resized")
     except KeyboardInterrupt:
         log.info("Interrupted by user, terminating...")
@@ -117,124 +148,3 @@ def resize_photo_diretory(cfg):
         log.error(f"An error occurred: {e}")
     finally:
         log.info("Completed resizing images.")
-
-
-def create_masks(cfg):
-    down_photos_dir = cfg["asfm"]["down_photos"]
-    save_dir = cfg["asfm"]["down_masks"]
-    Path(save_dir).mkdir(exist_ok=True, parents=True)
-
-    img_files = glob.glob(os.path.join(down_photos_dir, "*.jpg"))
-    num_files = len(img_files)
-    log.info(f"Masking {num_files} images.")
-    data = [
-        {
-            "image_src": src,
-            "mask_dst": str(Path(save_dir, Path(src).stem + "_mask.png")),
-        }
-        for src in img_files
-    ]
-
-    # Adjust the number of processes as needed
-    num_processes = int(len(os.sched_getaffinity(0)) / cfg.general.cpu_denominator)
-
-    # try:
-    with Pool(num_processes) as pool:
-        for i, _ in enumerate(pool.imap_unordered(mask_img, data), 1):
-            # pool.imap_unordered(resize_and_save, data)
-            print(f"Progress: {i}/{num_files} images masked.")
-    # except KeyboardInterrupt:
-    #     log.info("Interrupted by user, terminating...")
-    #     pool.terminate()
-    # except Exception as e:
-    #     log.error(f"An error occurred: {e}")
-    # finally:
-    #     log.info("Completed masking images.")
-
-
-def simple_mask(mask):
-    # print(closed_mask)
-    # Calculate the number of pixels for 5% of the height of the image
-    percent = 0.15
-    height_percent = int(mask.shape[0] * percent)
-    # Set the top 5% and bottom 5% of the mask to false (unmasked)
-    if mask.max() == 255:
-        if mask[:height_percent, :].max() == 255:
-            mask[:height_percent] = 255
-
-        if mask[-height_percent:, :].max() == 255:
-            mask[-height_percent:, :] = 255
-    return mask
-
-
-def mask_img(data):
-    image_src = data["image_src"]
-    mask_dst = data["mask_dst"]
-
-    image = cv2.cvtColor(cv2.imread(image_src), cv2.COLOR_BGR2RGB)
-    # Convert the image to HSV
-    hsv_image = rgb2hsv(image)
-    # Define the range for blue color
-    # These ranges can be adjusted depending on the shade of blue in the image
-    lower_blue = np.array([0.4, 0.3, 0.2])
-    upper_blue = np.array([0.6, 0.9, 1])
-
-    # Create a binary mask for the blue color
-    mask = (
-        (hsv_image[:, :, 0] >= lower_blue[0])
-        & (hsv_image[:, :, 0] <= upper_blue[0])
-        & (hsv_image[:, :, 1] >= lower_blue[1])
-        & (hsv_image[:, :, 1] <= upper_blue[1])
-        & (hsv_image[:, :, 2] >= lower_blue[2])
-        & (hsv_image[:, :, 2] <= upper_blue[2])
-    )
-
-    # Convert the mask to uint8 format
-    mask = mask.astype(np.uint8)
-
-    kernel = square(35)
-    closed_mask = binary_closing(mask, kernel).astype(np.uint8)
-    closed_mask = cv2.morphologyEx(closed_mask, cv2.MORPH_OPEN, kernel)
-    closed_mask = cv2.dilate(closed_mask, kernel, iterations=3) * 255
-    masked = simple_mask(closed_mask)
-
-    cv2.imwrite(mask_dst, masked)
-
-    return True
-
-
-def resize_masks(cfg):
-    base_path = cfg["batchdata"]["masks"]
-    save_dir = cfg["asfm"]["down_masks"]
-
-    files = glob.glob(os.path.join(base_path, "*.png"))
-    num_files = len(files)
-    log.debug(f"Found {num_files} files to process.")
-
-    data = [
-        {
-            "image_src": src,
-            "image_dst": os.path.join(save_dir, os.path.basename(src)),
-            "scale": cfg["asfm"]["downscale"]["factor"],
-            "masks": True,
-        }
-        for src in files
-    ]
-
-    # Adjust the number of processes as needed
-    num_processes = int(len(os.sched_getaffinity(0)) / cfg.general.cpu_denominator)
-
-    try:
-        with Pool(num_processes) as pool:
-            # pool.imap_unordered(resize_and_save, data)
-            for i, _ in enumerate(pool.imap_unordered(resize_and_save, data), 1):
-                print(f"Progress: {i}/{num_files} masks resized")
-    except KeyboardInterrupt:
-        log.info("Interrupted by user, terminating...")
-        pool.terminate()
-    except Exception as e:
-        log.error(f"An error occurred: {e}")
-    finally:
-        log.info("Completed resizing masks.")
-
-    remove_missing_data(cfg)

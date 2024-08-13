@@ -1,219 +1,168 @@
 import logging
 import signal
-
+import sys
 from omegaconf import DictConfig
 
 from utils.config_utils import autosfm_present, create_config
 from utils.metashape_utils import SfM
-from utils.resize import (create_masks, resize_masks,
-                                     resize_photo_diretory)
+from utils.resize import resize_photo_diretory
 
-# Set the logger
+# Set up the logger
 log = logging.getLogger(__name__)
 
+class SfMProcessingError(Exception):
+    """Custom exception for errors during SfM processing."""
+    pass
 
 def main(cfg: DictConfig) -> None:
-    def sigint_handler(signum, frame):
+    """
+    Main function to run the SfM pipeline based on the provided configuration.
+
+    Args:
+        cfg (DictConfig): Configuration dictionary for the SfM process.
+    """
+    def sigint_handler(signum: int, frame) -> None:
+        """
+        Signal handler for SIGINT.
+
+        Args:
+            signum (int): Signal number.
+            frame: Current stack frame.
+        """
         print("\nPython SIGINT detected. Exiting.\n")
-        exit(1)
+        sys.exit(1)
 
-    def sigterm_handler(signum, frame):
+    def sigterm_handler(signum: int, frame) -> None:
+        """
+        Signal handler for SIGTERM.
+
+        Args:
+            signum (int): Signal number.
+            frame: Current stack frame.
+        """
         print("\nPython SIGTERM detected. Exiting.\n")
-        exit(1)
+        sys.exit(1)
 
+    # Register signal handlers
     signal.signal(signal.SIGINT, sigint_handler)
     signal.signal(signal.SIGTERM, sigterm_handler)
 
-    # Setup config
-    cfg = create_config(cfg)
+    try:
+        # Setup configuration
+        cfg = create_config(cfg)
 
-    # Check if autosfm has already been run
-    if cfg.asfm.check_for_asfm:
-        try:
-            log.info(f"Checking for autosfm contents")
+        # Check if autosfm has already been run
+        if cfg.asfm.check_for_asfm:
+            log.info("Checking for autosfm contents")
             if autosfm_present(cfg):
-                log.info(
-                    f"Autosfm has already been run. All contents are available. Moving to next process."
-                )
-                exit(0)
+                log.info("Autosfm has already been run. All contents are available. Moving to next process.")
+                return
 
-        except Exception as e:
-            log.exception(f"Failed to check asfm contents. Exiting")
-            exit(1)
-
-    # Resize images and masks
-    if cfg.asfm.resize_photos:
-        try:
+        # Resize images and masks if needed
+        if cfg.asfm.resize_photos:
             if cfg["asfm"]["downscale"]["enabled"]:
-                log.info(f"Resizing images")
+                log.info("Resizing images")
                 resize_photo_diretory(cfg)
-                if cfg["asfm"]["use_masking"]:
-                    log.info(f"Resizing masks")
-                    resize_masks(cfg)
-        except Exception as e:
-            log.exception(f"Failed to downsize images. Exiting.")
-            exit(1)
 
+        # Initialize SfM pipeline
+        log.info("Initializing SfM")
+        pipeline = SfM(cfg)
 
-    # Initialize pipeline
-    log.info(f"Initializing SfM")
-    pipeline = SfM(cfg)
-
-    # Add photos to ms project
-    if cfg.asfm.add_photos_and_masks:
-        try:
-            log.info(f"Adding photos")
+        # Add photos and masks to the Metashape project
+        if cfg.asfm.add_photos_and_masks:
+            log.info("Adding photos")
             pipeline.add_photos()
             if cfg["asfm"]["use_masking"]:
                 pipeline.add_masks()
-        except Exception as e:
-            log.exception(f"Failed to add photos. Exiting.")
-            exit(1)
 
-    # Detect markers
-    if cfg.asfm.detect_markers:
-        try:
-            log.info(f"Detecting markers")
+        # Detect markers in the images
+        if cfg.asfm.detect_markers:
+            log.info("Detecting markers")
             pipeline.detect_markers()
-        except Exception as e:
-            log.exception(f"Failed to detect markers. Exiting")
-            exit(1)
 
-    # Import marker locations
-    if cfg.asfm.import_references:
-        try:
-            log.info(f"Importing references")
+        # Import marker locations (references)
+        if cfg.asfm.import_references:
+            log.info("Importing references")
             pipeline.import_reference()
-        except Exception as e:
-            log.exception(f"Failed to import reference. Exiting")
-            exit(1)
 
-    # Match photos
-    if cfg.asfm.match:
-        try:
-            log.info(f"Matching photos")
+        # Match photos to find common points
+        if cfg.asfm.match:
+            log.info("Matching photos")
             pipeline.match_photos()
-        except Exception as e:
-            log.exception(f"Failed to match photos. Exiting")
-            exit(1)
 
-    # Align photos
-    if cfg.asfm.align:
-        try:
-            log.info(f"Aligning photos")
+        # Align photos to reconstruct camera positions
+        if cfg.asfm.align:
+            log.info("Aligning photos")
             pipeline.align_photos(correct=True)
-            # pipeline.reset_region()
-        except Exception as e:
-            log.exception(f"Failed to align photos. Exiting")
-            exit(1)
 
-    # Optimize cameras
-    if cfg.asfm.optimize_cameras:
-        try:
-            log.info(f"Optimizing cameras")
+        # Optimize camera alignment
+        if cfg.asfm.optimize_cameras:
+            log.info("Optimizing cameras")
             pipeline.optimize_cameras()
-        except Exception as e:
-            log.exception(f"Failed to optimize cameras. Exiting")
-            exit(1)
 
-    # Export data
-    if cfg.asfm.export_gcp_camref_err:
-        try:
-            log.info(f"Exporting GCP reference")
+        # Export GCP and camera reference data, and error statistics
+        if cfg.asfm.export_gcp_camref_err:
+            log.info("Exporting GCP reference")
             pipeline.export_gcp_reference()
-        except Exception as e:
-            log.exception(f"Failed to export GCP reference. Exiting")
-            exit(1)
-        try:
-            log.info(f"Exporting camera reference")
+
+            log.info("Exporting camera reference")
             pipeline.export_camera_reference()
-        except Exception as e:
-            log.exception(f"Failed to export camera reference. Exiting")
-            exit(1)
 
-        try:
-            log.info(f"Exporting error stats")
+            log.info("Exporting error stats")
             pipeline.export_stats()
-        except Exception as e:
-            log.exception(f"Failed to export error stats. Exiting")
-            exit(1)
 
-    # Electives
+        # Elective processes
 
-    # Build depth map
-    if cfg.asfm.build_depth:
-        try:
-            if cfg["asfm"]["depth_map"]["enabled"]:
-                log.info(f"Building depth maps")
-                pipeline.build_depth_map()
-        except Exception as e:
-            log.exception(f"Failed to build depth maps. Exiting")
-            exit(1)
+        # Build depth map if configured
+        if cfg.asfm.build_depth and cfg["asfm"]["depth_map"]["enabled"]:
+            log.info("Building depth maps")
+            pipeline.build_depth_map()
 
-    # Build dense point cloud
-    if cfg.asfm.build_dense:
-        try:
-            if cfg["asfm"]["dense_cloud"]["enabled"]:
-                log.info(f"Buidling dense point cloud")
-                pipeline.build_dense_cloud()
-        except Exception as e:
-            log.exception(f"Failed to buidl dense point cloud. Exiting")
-            exit(1)
+        # Build dense point cloud if configured
+        if cfg.asfm.build_dense and cfg["asfm"]["dense_cloud"]["enabled"]:
+            log.info("Building dense point cloud")
+            pipeline.build_dense_cloud()
 
-    if cfg.asfm.build_model:
-        try:
-            if cfg["asfm"]["model"]["enabled"]:
-                log.info(f"Buidling model")
-                pipeline.build_model()
-        except Exception as e:
-            log.exception(f"Failed to model. Exiting")
-            exit(1)
+        # Build 3D model if configured
+        if cfg.asfm.build_model and cfg["asfm"]["model"]["enabled"]:
+            log.info("Building model")
+            pipeline.build_model()
 
-    if cfg.asfm.build_texture:
-        try:
-            if cfg["asfm"]["texture"]["enabled"]:
-                log.info(f"Buidling texture")
-                pipeline.build_texture()
-        except Exception as e:
-            log.exception(f"Failed to texture. Exiting")
-            exit(1)
+        # Build Digital Elevation Model (DEM) if configured
+        if cfg.asfm.build_dem and cfg["asfm"]["dem"]["enabled"]:
+            log.info("Building DEM")
+            pipeline.build_dem()
 
-    # Build DEM
-    if cfg.asfm.build_dem:
-        try:
-            if cfg["asfm"]["dem"]["enabled"]:
-                log.info(f"Building DEM")
-                pipeline.build_dem()
-        except Exception as e:
-            log.exception(f"Failed to build DEM. Exiting")
-            exit(1)
+        # Build orthomosaic if configured
+        if cfg.asfm.build_ortho and cfg["asfm"]["orthomosaic"]["enabled"]:
+            log.info("Building orthomosaic")
+            pipeline.build_ortomosaic()
 
-    # Build ortho
-    if cfg.asfm.build_ortho:
-        try:
-            if cfg["asfm"]["orthomosaic"]["enabled"]:
-                log.info(f"Building orthomosaic")
-                pipeline.build_ortomosaic()
-        except Exception as e:
-            log.exception(f"Failed to build orthomosaic. Exiting")
-            exit(1)
+        # Export Field of View (FOV) data if configured
+        if cfg.asfm.export_fov and cfg["asfm"]["export_fov"]:
+            log.info("Exporting camera FOV information")
+            pipeline.camera_fov()
 
-    # Export fov data
-    if cfg.asfm.export_fov:
-        try:
-            if cfg["asfm"]["camera_fov"]["enabled"]:
-                log.info(f"Exporting camera FOV information")
-                pipeline.camera_fov()
-        except Exception as e:
-            log.exception(f"Failed to export camera FOV information. Exiting")
-            exit(1)
-
-    # Export preview view of ortho
-    if cfg.asfm.export_report:
-        try:
-            log.info(f"Exporting report")
+        # Export final report if configured
+        if cfg.asfm.export_report:
+            log.info("Exporting report")
             pipeline.export_report()
-        except Exception as e:
-            log.exception(f"Failed to export report. Exiting")
-            exit(1)
-    log.info(f"AutoSfM Complete")
+
+        log.info("AutoSfM Complete")
+
+    except SfMProcessingError as e:
+        log.error(f"An error occurred during SfM processing: {e}")
+        sys.exit(1)
+    except Exception as e:
+        log.exception("An unexpected error occurred.")
+        sys.exit(1)
+
+# Uncomment and modify the following lines for script execution
+# if __name__ == "__main__":
+#     try:
+#         # Example configuration loading
+#         config = DictConfig({"asfm": {}})  # Replace with actual configuration loading
+#         main(config)
+#     except Exception as e:
+#         log.exception("An error occurred in the main execution.")
+#         sys.exit(1)
