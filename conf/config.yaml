@@ -1,0 +1,85 @@
+general:
+  batch_id: "your_batch_id"
+  season: "your_season"
+  metashape_key: "your_metashape_key"
+
+asfm:
+  check_for_asfm: true
+  resize_photos: true
+  downscale:
+    enabled: true
+  use_masking: false
+  add_photos_and_masks: true
+  detect_markers: true
+  import_references: true
+  match: true
+  align: true
+  optimize_cameras: true
+  export_gcp_camref_err: true
+  build_depth: true
+  depth_map:
+    enabled: true
+    downscale: 2
+    autosave: true
+  build_dense: true
+  dense_cloud:
+    enabled: true
+    autosave: true
+  build_model: true
+  model:
+    enabled: true
+  build_texture: true
+  texture:
+    enabled: true
+  build_dem: true
+  dem:
+    enabled: true
+    autosave: true
+    export:
+      enabled: true
+  build_ortho: true
+  orthomosaic:
+    enabled: true
+    autosave: true
+    export:
+      enabled: true
+  export_fov: true
+  camera_fov:
+    enabled: true
+  export_report: true
+  proj_path: "your_project_path.psx"
+  num_gpus: "all"  # or specify the number of GPUs, e.g., 2
+  down_photos: "your_photos_directory"
+  down_masks: "your_masks_directory"
+  cam_ref: "your_camera_reference_csv_path"
+  gcp_ref: "your_gcp_reference_csv_path"
+  err_ref: "your_error_statistics_csv_path"
+  fov_ref: "your_fov_reference_csv_path"
+  dem_path: "your_dem_path"
+  ortho_path: "your_ortho_path"
+  align_photos:
+    downscale: 2
+    generic_preselection: true
+    reference_preselection: true
+    filter_stationary_points: false
+  optimize_cameras_cfg:
+    fit_f: true
+    fit_cx: true
+    fit_cy: true
+    fit_b1: false
+    fit_b2: false
+    fit_k1: true
+    fit_k2: true
+    fit_k3: true
+    fit_k4: false
+    fit_p1: true
+    fit_p2: true
+    fit_corrections: true
+    adaptive_fitting: false
+    tiepoint_covariance: false
+
+data:
+  gcp_ref: "your_gcp_reference_csv_path"
+
+batchdata:
+  autosfm: "your_autosfm_directory"
